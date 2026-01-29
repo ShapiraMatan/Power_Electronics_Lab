@@ -100,6 +100,17 @@ void main(void)
     //
     InitGpio();
 
+        // 2. Configure GPIO Muxing for ePWM7
+    EALLOW;
+    // Set Pin 12 to EPWM7A (GMUX = 0, MUX = 1 for F28P55x)
+    GpioCtrlRegs.GPAGMUX1.bit.GPIO12 = 0;
+    GpioCtrlRegs.GPAMUX1.bit.GPIO12 = 1;
+    
+    // Set Pin 13 to EPWM7B (GMUX = 0, MUX = 1 for F28P55x)
+    GpioCtrlRegs.GPAGMUX1.bit.GPIO13 = 0;
+    GpioCtrlRegs.GPAMUX1.bit.GPIO13 = 1;
+    EDIS;
+
     //
     // Disable CPU interrupts
     //
@@ -139,10 +150,17 @@ void main(void)
     //
     // Configure the ePWM
     //
+        // 4. Configure ePWM
+    EALLOW;
+    CpuSysRegs.PCLKCR0.bit.TBCLKSYNC = 0; // Stop all PWM clocks for sync
+    EDIS;
+
     initEPWM();
-    //add duty cycle 
-    UpdateDuty(); 
-    //
+
+    EALLOW;
+    CpuSysRegs.PCLKCR0.bit.TBCLKSYNC = 1; // Start all PWM clocks
+    EDIS;
+
     // Setup the ADC for ePWM triggered conversions on channel 1
     //
     initADCSOC();
@@ -183,11 +201,6 @@ void main(void)
     while(1)
     {
         
-        
-
-
-
-        
         // Commented as per lab instruction 1/23/2026
         // //
         // // Start ePWM
@@ -195,8 +208,8 @@ void main(void)
         // EPwm1Regs.ETSEL.bit.SOCAEN = 1;    // Enable SOCA
         // EPwm1Regs.TBCTL.bit.CTRMODE = 0;   // Unfreeze, and enter up count mode
 
-        UpdateDuty();
-        DELAY_US(1000);
+        UpdateDuty(); // added this function 
+        DELAY_US(1000); // adding delay 
 
         // //
         // // Wait while ePWM causes ADC conversions, which then cause interrupts,
@@ -281,16 +294,8 @@ void initEPWM(void)
     EALLOW;
     // // Start all PWM clocks
     // 0 (Stop) / 1 (Start)
-    CpuSysRegs.PCLKCR0.bit.TBCLKSYNC = 1; // Do we really need this? 
+    //CpuSysRegs.PCLKCR0.bit.TBCLKSYNC = 1; // Do we really need this? 
 
-    // setting up the multiplexers pins (GPIO12=EPWM7A || GPIO13=EPWM7B)
-    // Configure GPIO12 (ePWM7A) // 00 01 => 1 
-    GpioCtrlRegs.GPAGMUX1.bit.GPIO12 = 0; 
-    GpioCtrlRegs.GPAMUX1.bit.GPIO12 = 1;
-    
-    // Configure GPIO13 (ePWM7B) // 00 01 => 
-    GpioCtrlRegs.GPAGMUX1.bit.GPIO13 = 0;
-    GpioCtrlRegs.GPAMUX1.bit.GPIO13 = 1;
 
 
     // Setting up the carrier wave parameters 
