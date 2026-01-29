@@ -139,7 +139,8 @@ void main(void)
     // Configure the ePWM
     //
     initEPWM();
-
+    //add duty cycle 
+    UpdateDuty(); 
     //
     // Setup the ADC for ePWM triggered conversions on channel 1
     //
@@ -192,6 +193,9 @@ void main(void)
         // //
         // EPwm1Regs.ETSEL.bit.SOCAEN = 1;    // Enable SOCA
         // EPwm1Regs.TBCTL.bit.CTRMODE = 0;   // Unfreeze, and enter up count mode
+
+        UpdateDuty();
+        DELAY_US(1000);
 
         // //
         // // Wait while ePWM causes ADC conversions, which then cause interrupts,
@@ -255,8 +259,18 @@ void initADC(void)
 //
 float DutyCycle = 0.5; // the duty cycle 
 const uint16_t PWM_Carrier_Waveform = TB_COUNT_UP;  // waveform type 
-float PWM_frequency = 100000 // 1/Ts = 1/(NrTclk) = switching frequency 
-float SysClockFreq = 150000000
+/*
+Defined (PWM_Carrier_Waveform) waveforms types:  
+TB_COUNT_UP (0x0)
+TB_COUNT_DOWN (0x1)
+TB_COUNT_UPDOWN (0x2)
+TB_FREEZE (0x3)
+*/
+
+// 100MHz / (2 * 100kHz) = 500
+#define PWM_PRD_VAL 500  
+float PWM_frequency = 100e3 // 1/Ts = 1/(NrTclk) = switching frequency 
+float SysClockFreq = 1.5e6
 
 
 void initEPWM(void)
@@ -264,15 +278,53 @@ void initEPWM(void)
 
     uint32_t period;
     EALLOW;
-    CpuSysRegs.PCLKCR0.bit.TBCLKSYNC = 0;
+    // // Start all PWM clocks
+    // 0 (Stop) / 1 (Start)
+    CpuSysRegs.PCLKCR0.bit.TBCLKSYNC = 1; // Do we really need this? 
+
+    // setting up the multiplexers pins (GPIO12=EPWM7A || GPIO13=EPWM7B)
+    // Configure GPIO12 (ePWM7A) // 00 01 => 1 
+    GpioCtrlRegs.GPAGMUX1.bit.GPIO12 = 0; 
+    GpioCtrlRegs.GPAMUX1.bit.GPIO12 = 1;
     
-    // Configure GPIO12 (ePWM7A)
-    GpioCtrlRegs.GPAGMUX1.bit.GPIO12 = 1; 
-    GpioCtrlRegs.GPAMUX1.bit.GPIO12 = 3;  
+    // Configure GPIO13 (ePWM7B) // 00 01 => 
+    GpioCtrlRegs.GPAGMUX1.bit.GPIO13 = 0;
+    GpioCtrlRegs.GPAMUX1.bit.GPIO13 = 1;
+
+
+    // Setting up the carrier wave parameters 
+    // --- Time Base (TB) Subsystem ---
+    EPwm7Regs.TBPRD = PWM_PRD_VAL;           // Set period
+    EPwm7Regs.TBPHS.bit.TBPHS = 0x0000;      // Phase is 0
+    EPwm7Regs.TBCTR = 0x0000;                // Clear counter
+    EPwm7Regs.TBCTL.bit.CTRMODE = WAVEFORM_TYPE; // Up-Down Count
+    EPwm7Regs.TBCTL.bit.HSPCLKDIV = 0;       // TBCLK = SYSCLKOUT / 1
+    EPwm7Regs.TBCTL.bit.CLKDIV = 0;
+
+    // --- Counter Compare (CC) Subsystem ---
+    EPwm7Regs.CMPA.bit.CMPA = PWM_PRD_VAL / 2; // Default 50% duty
+
+    // --- Action Qualifier (AQ) Subsystem ---
+    // Actions for EPWM7A
+    EPwm7Regs.AQCTLA.bit.CAU = 2; // Set High on CMPA Up-count
+    EPwm7Regs.AQCTLA.bit.CAD = 1; // Set Low on CMPA Down-count
+
+    // --- Dead-Band (DB) Subsystem ---
+    // Configure for Active High Complementary (AHC)
+    EPwm7Regs.DBCTL.bit.OUT_MODE = 3;  // Fully enabled RED and FED
+    EPwm7Regs.DBCTL.bit.POLSEL = 2;    // Active High Complementary (B is inverted A)
+    EPwm7Regs.DBCTL.bit.IN_MODE = 0;   // EPWM7A is the source for both delays
     
-    // Configure GPIO13 (ePWM7B)
-    GpioCtrlRegs.GPAGMUX1.bit.GPIO13 = 1;
-    GpioCtrlRegs.GPAMUX1.bit.GPIO13 = 3;  
+    EPwm7Regs.DBRED.bit.DBRED = 20;    // 200ns delay at 100MHz
+    EPwm7Regs.DBFED.bit.DBFED = 20;    // 200ns delay at 100MHz
+
+
+
+
+
+
+/* Commented for now (01/29/2026)
+
     EPwm1Regs.ETSEL.bit.SOCAEN = 0;     // Disable SOC on A group
     EPwm1Regs.ETSEL.bit.SOCASEL = 4;    // Select SOC on up-count
     EPwm1Regs.ETPS.bit.SOCAPRD = 1;     // Generate pulse on 1st event
@@ -314,10 +366,23 @@ void initEPWM(void)
 
     // Enable TBCLK sync
     CpuSysRegs.PCLKCR0.bit.TBCLKSYNC = 1;
-
+*/
     EDIS;
 }
 
+// adding this function to control duty cycle 
+void UpdateDuty(void)
+{
+    // Clamp duty cycle for safety
+    if(dutyCycle > 0.95f) dutyCycle = 0.95f; 
+    if(dutyCycle < 0.05f) dutyCycle = 0.05f;
+
+    // In Up-Down mode, duty cycle is inverse to CMPA value
+    // High CMPA = Small Duty cycle; Low CMPA = Large Duty cycle
+    uint16_t newCmpA = (uint16_t)((1.0f - dutyCycle) * (float)PWM_PRD_VAL);
+    
+    EPwm7Regs.CMPA.bit.CMPA = newCmpA;
+}
 //
 // initADCSOC - Function to configure ADCA's SOC0 to be triggered by ePWM1.
 //
