@@ -79,14 +79,20 @@ volatile uint16_t bufferFull;                // Flag to indicate buffer is full
 
 // Define the wave parameter 
 // 100MHz / (2 * 100kHz) = 500
-#define PWM_PRD_VAL       500  
-#define WAVEFORM_TYPE     2     // 2 = Up-Down Count mode
-
+#define PWM_PRD_VAL       15000  
+#define WAVEFORM_TYPE     TB_COUNT_UPDOWN     // 2 = Up-Down Count mode
+/*
+Defined (PWM_Carrier_Waveform) waveforms types:  
+TB_COUNT_UP (0x0)
+TB_COUNT_DOWN (0x1)
+TB_COUNT_UPDOWN (0x2)
+TB_FREEZE (0x3)
+*/
 // Global variable for Duty Cycle (0.0 to 1.0)
-volatile float dutyCycle = 0.5f;
+volatile float dutyCycle = 0.1f;
 
 
-//test
+//
 // Function Prototypes
 //
 void initADC(void);
@@ -321,8 +327,28 @@ void initEPWM(void)
 
     // --- Action Qualifier (AQ) Subsystem ---
     // Actions for EPWM7A
-    EPwm7Regs.AQCTLA.bit.CAU = 2; // Set High on CMPA Up-count
-    EPwm7Regs.AQCTLA.bit.CAD = 1; // Set Low on CMPA Down-count
+// --- Action Qualifier (AQ) Subsystem ---
+EPwm7Regs.AQCTLA.all = 0;   // clear all AQ actions first
+
+if (WAVEFORM_TYPE == TB_COUNT_UP)
+{
+    // edge-aligned PWM: set at zero, clear on compare up
+    EPwm7Regs.AQCTLA.bit.ZRO = 2;  // SET
+    EPwm7Regs.AQCTLA.bit.CAU = 1;  // CLEAR
+}
+else if (WAVEFORM_TYPE == TB_COUNT_DOWN)
+{
+    // edge-aligned PWM: set at period, clear on compare down
+    EPwm7Regs.AQCTLA.bit.PRD = 2;  // SET
+    EPwm7Regs.AQCTLA.bit.CAD = 1;  // CLEAR
+}
+else // TB_COUNT_UPDOWN
+{
+    // center-aligned PWM: set on compare up, clear on compare down
+    EPwm7Regs.AQCTLA.bit.CAU = 2;  // SET
+    EPwm7Regs.AQCTLA.bit.CAD = 1;  // CLEAR
+}
+
 
     // --- Dead-Band (DB) Subsystem ---
     // Configure for Active High Complementary (AHC)
@@ -330,8 +356,8 @@ void initEPWM(void)
     EPwm7Regs.DBCTL.bit.POLSEL = 2;    // Active High Complementary (B is inverted A)
     EPwm7Regs.DBCTL.bit.IN_MODE = 0;   // EPWM7A is the source for both delays
     
-    EPwm7Regs.DBRED.bit.DBRED = 20;    // 200ns delay at 100MHz
-    EPwm7Regs.DBFED.bit.DBFED = 20;    // 200ns delay at 100MHz
+    EPwm7Regs.DBRED.bit.DBRED = 15;    // 200ns delay at 100MHz
+    EPwm7Regs.DBFED.bit.DBFED = 15;    // 200ns delay at 100MHz
 
 
 
@@ -388,16 +414,24 @@ void initEPWM(void)
 // adding this function to control duty cycle 
 void UpdateDuty(void)
 {
-    // Clamp duty cycle for safety
-    if(dutyCycle > 0.95f) dutyCycle = 0.95f; 
+    if(dutyCycle > 0.95f) dutyCycle = 0.95f;
     if(dutyCycle < 0.05f) dutyCycle = 0.05f;
 
-    // In Up-Down mode, duty cycle is inverse to CMPA value
-    // High CMPA = Small Duty cycle; Low CMPA = Large Duty cycle
-    uint16_t newCmpA = (uint16_t)((1.0f - dutyCycle) * (float)PWM_PRD_VAL);
-    
+    uint16_t prd = EPwm7Regs.TBPRD;
+    uint16_t newCmpA;
+
+    if (WAVEFORM_TYPE == TB_COUNT_UP)
+        newCmpA = (uint16_t)(dutyCycle * (float)prd);
+    else
+        newCmpA = (uint16_t)((1.0f - dutyCycle) * (float)prd);
+
+    // keep it away from exact endpoints so events actually occur
+    if(newCmpA < 1) newCmpA = 1;
+    if(newCmpA > (prd - 1)) newCmpA = prd - 1;
+
     EPwm7Regs.CMPA.bit.CMPA = newCmpA;
 }
+
 //
 // initADCSOC - Function to configure ADCA's SOC0 to be triggered by ePWM1.
 //
