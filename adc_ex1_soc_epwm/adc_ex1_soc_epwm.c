@@ -79,11 +79,17 @@ volatile uint16_t bufferFull;                // Flag to indicate buffer is full
 
 // Define the wave parameter 
 // 100MHz / (2 * 100kHz) = 500
-#define PWM_PRD_VAL       500  
+#define PWM_PRD_VAL       1000  
 #define WAVEFORM_TYPE     2     // 2 = Up-Down Count mode
-
+/*
+Defined (PWM_Carrier_Waveform) waveforms types:  
+TB_COUNT_UP (0x0)
+TB_COUNT_DOWN (0x1)
+TB_COUNT_UPDOWN (0x2)
+TB_FREEZE (0x3)
+*/
 // Global variable for Duty Cycle (0.0 to 1.0)
-volatile float dutyCycle = 0.5f;
+volatile float dutyCycle = 0.7f;
 
 
 //
