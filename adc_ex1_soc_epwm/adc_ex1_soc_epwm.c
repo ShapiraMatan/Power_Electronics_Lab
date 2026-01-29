@@ -76,6 +76,16 @@ uint16_t adcAResults[RESULTS_BUFFER_SIZE];   // Buffer for results
 uint16_t index;                              // Index into result buffer
 volatile uint16_t bufferFull;                // Flag to indicate buffer is full
 
+
+// Define the wave parameter 
+// 100MHz / (2 * 100kHz) = 500
+#define PWM_PRD_VAL       500  
+#define WAVEFORM_TYPE     2     // 2 = Up-Down Count mode
+
+// Global variable for Duty Cycle (0.0 to 1.0)
+volatile float dutyCycle = 0.5f;
+
+
 //
 // Function Prototypes
 //
@@ -271,8 +281,8 @@ void initADC(void)
 //
 // initEPWM - Function to configure ePWM1 to generate the SOC.
 //
-float dutyCycle = 0.5f; // the duty cycle 
-#define WAVEFORM_TYPE TB_COUNT_UP;  // waveform type 
+// float dutyCycle = 0.5f; // the duty cycle 
+// #define WAVEFORM_TYPE TB_COUNT_UP;  // waveform type 
 /*
 Defined (PWM_Carrier_Waveform) waveforms types:  
 TB_COUNT_UP (0x0)
@@ -282,14 +292,13 @@ TB_FREEZE (0x3)
 */
 
 // 100MHz / (2 * 100kHz) = 500
-#define PWM_PRD_VAL 500  
-float PWM_frequency = 100e3; // 1/Ts = 1/(NrTclk) = switching frequency 
-float SysClockFreq = 1.5e6;
+// #define PWM_PRD_VAL 500  
+// float PWM_frequency = 100e3; // 1/Ts = 1/(NrTclk) = switching frequency 
+// float SysClockFreq = 1.5e6;
 
 
 void initEPWM(void)
 {
-
     //uint32_t period;
     EALLOW;
     // // Start all PWM clocks
