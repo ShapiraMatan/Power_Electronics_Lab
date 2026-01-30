@@ -95,6 +95,8 @@ volatile float dutyCycle = 0.1f;
 // ACQPS value = cycles - 1 = 14
 #define ADC_ACQPS_VAL     14     
 
+// adding this to show results on the Watch Window 
+volatile uint16_t adcResultRaw = 0;
 //
 // Function Prototypes
 //
