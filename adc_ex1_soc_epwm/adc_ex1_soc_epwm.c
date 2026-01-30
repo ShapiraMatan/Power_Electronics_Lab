@@ -97,6 +97,16 @@ volatile float dutyCycle = 0.1f;
 
 // adding this to show results on the Watch Window 
 volatile uint16_t adcResultRaw = 0;
+
+
+// --- Hardware Constants (Adjust to your actual divider) ---
+#define R1_VAL            150000.0f  // Example: 10k Ohm
+#define R2_VAL            100000.0f   // Example: 2k Ohm
+#define VREF_VAL          3.0f      // F28P55x standard VREF is often 3.0V
+#define ADC_MAX_COUNT     4095.0f   // 12-bit resolution
+
+
+
 //
 // Function Prototypes
 //
@@ -495,7 +505,14 @@ __interrupt void adcA1ISR(void)
     // //
     // // Add the latest result to the buffer
     // // ADCRESULT0 is the result register of SOC0
-    // adcAResults[index++] = AdcaResultRegs.ADCRESULT0;
+    adcAResults[index++] = AdcaResultRegs.ADCRESULT0;
+        // 1. Read raw digital value
+    adcResultRaw = AdcaResultRegs.ADCRESULT0;
+
+    // 2. Calculate the physical Supply Voltage (Analytical Relationship)
+    // V_pin = (adcResultRaw / 4095) * Vref
+    // Vout = V_pin * ((R1 + R2) / R2)
+    Vout = ((float)adcResultRaw / ADC_MAX_COUNT) * VREF_VAL * ((R1_VAL + R2_VAL) / R2_VAL);
 
     // //
     // // Set the bufferFull flag if the buffer is full
