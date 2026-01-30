@@ -106,6 +106,8 @@ volatile uint16_t adcResultRaw = 0;
 #define ADC_MAX_COUNT     4095.0f   // 12-bit resolution
 
 
+volatile float Vout = 0.0f;  // The calculated supply voltage
+volatile float V_pin = 0.0f;  // The calculated divider voltage
 
 //
 // Function Prototypes
@@ -515,7 +517,7 @@ __interrupt void adcA1ISR(void)
     
 
     //Vout divider 
-    V_pin = ((float)adcResultRaw/ADC_MAX_COUNT)*VREF_VAL 
+    V_pin = ((float)adcResultRaw/ADC_MAX_COUNT)*VREF_VAL; 
     //Vout (Power supply)
     Vout = ((float)adcResultRaw / ADC_MAX_COUNT) * VREF_VAL * ((R1_VAL + R2_VAL) / R2_VAL);
 
