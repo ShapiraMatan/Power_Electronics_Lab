@@ -512,6 +512,11 @@ __interrupt void adcA1ISR(void)
     // 2. Calculate the physical Supply Voltage (Analytical Relationship)
     // V_pin = (adcResultRaw / 4095) * Vref
     // Vout = V_pin * ((R1 + R2) / R2)
+    
+
+    //Vout divider 
+    V_pin = ((float)adcResultRaw/ADC_MAX_COUNT)*VREF_VAL 
+    //Vout (Power supply)
     Vout = ((float)adcResultRaw / ADC_MAX_COUNT) * VREF_VAL * ((R1_VAL + R2_VAL) / R2_VAL);
 
     // //
