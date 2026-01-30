@@ -79,7 +79,7 @@ volatile uint16_t bufferFull;                // Flag to indicate buffer is full
 
 // Define the wave parameter 
 // 100MHz / (2 * 100kHz) = 500
-#define PWM_PRD_VAL       15000  
+#define PWM_PRD_VAL       500  
 #define WAVEFORM_TYPE     TB_COUNT_UPDOWN     // 2 = Up-Down Count mode
 /*
 Defined (PWM_Carrier_Waveform) waveforms types:  
@@ -91,6 +91,9 @@ TB_FREEZE (0x3)
 // Global variable for Duty Cycle (0.0 to 1.0)
 volatile float dutyCycle = 0.1f;
 
+// Acquisition Window Calculation: 100ns / 6.67ns (SYSCLK) = 15 cycles
+// ACQPS value = cycles - 1 = 14
+#define ADC_ACQPS_VAL     14     
 
 //
 // Function Prototypes
@@ -264,21 +267,39 @@ void initADC(void)
     SetVREF(ADC_ADCA, ADC_INTERNAL, ADC_VREF3P3);
 
     EALLOW;
+    // Set ADC clock to System Clock (Prescale = 0 for 1:1)
+    AdcaRegs.ADCCTL2.bit.PRESCALE = 0; 
+
+    // Starter code provided lines - DO NOT CHANGE
+    AdcaRegs.ADCCTL1.bit.INTPULSEPOS = 1;
+    AdcaRegs.ADCCTL1.bit.ADCPWDNZ = 1;
+    
+    DELAY_US(1000); // Power-up delay
+
+    // SOC0 Configuration
+    AdcaRegs.ADCSOC0CTL.bit.CHSEL = 1;    // ADCINA1
+    AdcaRegs.ADCSOC0CTL.bit.TRIGSEL = 17; // ePWM7 SOCA trigger
+    AdcaRegs.ADCSOC0CTL.bit.ACQPS = ADC_ACQPS_VAL; // 100ns Window
+
+    // ADC Interrupt Configuration
+    AdcaRegs.ADCINTSEL1N2.bit.INT1SEL = 0; // End of SOC0 triggers INT1
+    AdcaRegs.ADCINTSEL1N2.bit.INT1E = 1;   // Enable INT1
+    AdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; // Clear flag
 
     //
     // Set ADCCLK divider to /4
     //
-    AdcaRegs.ADCCTL2.bit.PRESCALE = 6;
+    //AdcaRegs.ADCCTL2.bit.PRESCALE = 6;
 
     //
     // Set pulse positions to late
     //
-    AdcaRegs.ADCCTL1.bit.INTPULSEPOS = 1;
+    //AdcaRegs.ADCCTL1.bit.INTPULSEPOS = 1;
 
     //
     // Power up the ADC and then delay for 1 ms
     //
-    AdcaRegs.ADCCTL1.bit.ADCPWDNZ = 1;
+    //AdcaRegs.ADCCTL1.bit.ADCPWDNZ = 1;
     EDIS;
 
     DELAY_US(1000);
@@ -328,26 +349,27 @@ void initEPWM(void)
     // --- Action Qualifier (AQ) Subsystem ---
     // Actions for EPWM7A
 // --- Action Qualifier (AQ) Subsystem ---
-EPwm7Regs.AQCTLA.all = 0;   // clear all AQ actions first
+    EPwm7Regs.AQCTLA.all = 0;   // clear all AQ actions first
 
-if (WAVEFORM_TYPE == TB_COUNT_UP)
-{
-    // edge-aligned PWM: set at zero, clear on compare up
-    EPwm7Regs.AQCTLA.bit.ZRO = 2;  // SET
-    EPwm7Regs.AQCTLA.bit.CAU = 1;  // CLEAR
-}
-else if (WAVEFORM_TYPE == TB_COUNT_DOWN)
-{
-    // edge-aligned PWM: set at period, clear on compare down
-    EPwm7Regs.AQCTLA.bit.PRD = 2;  // SET
-    EPwm7Regs.AQCTLA.bit.CAD = 1;  // CLEAR
-}
-else // TB_COUNT_UPDOWN
-{
-    // center-aligned PWM: set on compare up, clear on compare down
-    EPwm7Regs.AQCTLA.bit.CAU = 2;  // SET
-    EPwm7Regs.AQCTLA.bit.CAD = 1;  // CLEAR
-}
+    // Added for waveform types 
+    if (WAVEFORM_TYPE == TB_COUNT_UP)
+    {
+        // edge-aligned PWM: set at zero, clear on compare up
+        EPwm7Regs.AQCTLA.bit.ZRO = 2;  // SET
+        EPwm7Regs.AQCTLA.bit.CAU = 1;  // CLEAR
+    }
+    else if (WAVEFORM_TYPE == TB_COUNT_DOWN)
+    {
+        // edge-aligned PWM: set at period, clear on compare down
+        EPwm7Regs.AQCTLA.bit.PRD = 2;  // SET
+        EPwm7Regs.AQCTLA.bit.CAD = 1;  // CLEAR
+    }
+    else // TB_COUNT_UPDOWN
+    {
+        // center-aligned PWM: set on compare up, clear on compare down
+        EPwm7Regs.AQCTLA.bit.CAU = 2;  // SET
+        EPwm7Regs.AQCTLA.bit.CAD = 1;  // CLEAR
+    }
 
 
     // --- Dead-Band (DB) Subsystem ---
@@ -362,6 +384,12 @@ else // TB_COUNT_UPDOWN
 
 
 
+    // Added for ADC 
+    // Event Trigger (ET) - ADC SOC Triggering
+    EPwm7Regs.ETSEL.bit.SOCAEN = 1;    // Enable SOCA pulse
+    EPwm7Regs.ETSEL.bit.SOCASEL = 3;   // Trigger on CTR = 0 or CTR = PRD (Peak-Valley)
+    EPwm7Regs.ETPS.bit.SOCAPRD = 1;    // Generate pulse on 1st event
+    EPwm7Regs.ETPS.bit.INTPRD = 1;     // Interrupt on 1st event (if used)
 
 
 /* Commented for now (01/29/2026)
@@ -462,23 +490,24 @@ void initADCSOC(void)
 //
 __interrupt void adcA1ISR(void)
 {
-    //
-    // Add the latest result to the buffer
-    // ADCRESULT0 is the result register of SOC0
-    adcAResults[index++] = AdcaResultRegs.ADCRESULT0;
+    // //
+    // // Add the latest result to the buffer
+    // // ADCRESULT0 is the result register of SOC0
+    // adcAResults[index++] = AdcaResultRegs.ADCRESULT0;
 
-    //
-    // Set the bufferFull flag if the buffer is full
-    //
-    if(RESULTS_BUFFER_SIZE <= index)
-    {
-        index = 0;
-        bufferFull = 1;
-    }
+    // //
+    // // Set the bufferFull flag if the buffer is full
+    // //
+    // if(RESULTS_BUFFER_SIZE <= index)
+    // {
+    //     index = 0;
+    //     bufferFull = 1;
+    // }
 
     //
     // Clear the interrupt flag
     //
+    
     AdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;
 
     //
