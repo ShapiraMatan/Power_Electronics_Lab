@@ -109,6 +109,13 @@ volatile uint16_t adcResultRaw = 0;
 volatile float Vout = 0.0f;  // The calculated supply voltage
 volatile float V_pin = 0.0f;  // The calculated divider voltage
 
+
+volatile uint16_t adcResultRaw1 = 0; 
+volatile uint16_t adcResultRaw2 = 0; // Raw from SOC2 (ADCINA12)
+
+volatile float Vin = 0.0f;           
+volatile float IL = 0.0f;            // Voltage at the ADC pin for current sensing
+
 //
 // Function Prototypes
 //
@@ -295,8 +302,22 @@ void initADC(void)
     AdcaRegs.ADCSOC0CTL.bit.TRIGSEL = 17; // ePWM7 SOCA trigger
     AdcaRegs.ADCSOC0CTL.bit.ACQPS = ADC_ACQPS_VAL; // 100ns Window
 
+    
+    // SOC1 Configuration
+    AdcaRegs.ADCSOC1CTL.bit.CHSEL = 4;     // ADCINA4
+    AdcaRegs.ADCSOC1CTL.bit.TRIGSEL = 0x11;  // ePWM7 SOCA (Same trigger as SOC0)
+    AdcaRegs.ADCSOC1CTL.bit.ACQPS = ADC_ACQPS_VAL;
+
+    
+    // SOC2: IL (ADCINA12)
+    AdcaRegs.ADCSOC2CTL.bit.CHSEL = 12;    // ADCINA12
+    AdcaRegs.ADCSOC2CTL.bit.TRIGSEL = 0x11;  // ePWM7 SOCA
+    AdcaRegs.ADCSOC2CTL.bit.ACQPS = ADC_ACQPS_VAL;
+
+
+
     // ADC Interrupt Configuration
-    AdcaRegs.ADCINTSEL1N2.bit.INT1SEL = 0; // End of SOC0 triggers INT1
+    AdcaRegs.ADCINTSEL1N2.bit.INT1SEL = 2; // End of SOC2 triggers INT1
     AdcaRegs.ADCINTSEL1N2.bit.INT1E = 1;   // Enable INT1
     AdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; // Clear flag
 
@@ -492,9 +513,27 @@ void initADCSOC(void)
     AdcaRegs.ADCSOC0CTL.bit.ACQPS = 9;     // Sample window is 10 SYSCLK cycles
     AdcaRegs.ADCSOC0CTL.bit.TRIGSEL = 5;   // Trigger on ePWM1 SOCA
 
-    AdcaRegs.ADCINTSEL1N2.bit.INT1SEL = 0; // End of SOC0 will set INT1 flag
-    AdcaRegs.ADCINTSEL1N2.bit.INT1E = 1;   // Enable INT1 flag
-    AdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; // Make sure INT1 flag is cleared
+    // AdcaRegs.ADCINTSEL1N2.bit.INT1SEL = 0; // End of SOC0 will set INT1 flag
+    // AdcaRegs.ADCINTSEL1N2.bit.INT1E = 1;   // Enable INT1 flag
+    // AdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; // Make sure INT1 flag is cleared
+
+    // --- SOC1 Configuration (ADCINA4) ---
+    AdcaRegs.ADCSOC1CTL.bit.CHSEL = 4;     // ADCINA4
+    AdcaRegs.ADCSOC1CTL.bit.TRIGSEL = 0x11;  // ePWM7 SOCA (Same trigger as SOC0)
+    AdcaRegs.ADCSOC1CTL.bit.ACQPS = ADC_ACQPS_VAL;
+
+
+    // SOC2: IL (ADCINA12)
+    AdcaRegs.ADCSOC2CTL.bit.CHSEL = 12;    // ADCINA12
+    AdcaRegs.ADCSOC2CTL.bit.TRIGSEL = 0x11;  // ePWM7 SOCA
+    AdcaRegs.ADCSOC2CTL.bit.ACQPS = ADC_ACQPS_VAL;
+
+
+    // Interrupt Selection
+    // Trigger INT1 after SOC2 completes to ensure ALL results are latched
+    AdcaRegs.ADCINTSEL1N2.bit.INT1SEL = 2; // End of SOC2 triggers INT1
+    AdcaRegs.ADCINTSEL1N2.bit.INT1E = 1;
+    AdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;
 
     EDIS;
 }
@@ -509,12 +548,20 @@ __interrupt void adcA1ISR(void)
     // // ADCRESULT0 is the result register of SOC0
     adcAResults[index++] = AdcaResultRegs.ADCRESULT0;
         // 1. Read raw digital value
-    adcResultRaw = AdcaResultRegs.ADCRESULT0;
+    adcResultRaw = AdcaResultRegs.ADCRESULT0; // From SOC0 Vout 
+
+
+    adcResultRaw1 = AdcaResultRegs.ADCRESULT1; // From SOC1 (A4) Vin 
+
+    adcResultRaw2 = AdcaResultRegs.ADCRESULT2; // From SOC2 IL 
+
 
     // 2. Calculate the physical Supply Voltage (Analytical Relationship)
     // V_pin = (adcResultRaw / 4095) * Vref
     // Vout = V_pin * ((R1 + R2) / R2)
     
+    // 
+    Vin  = ((float)adcResultRaw1 / ADC_MAX_COUNT) * VREF_VAL * ((R1_VAL + R2_VAL) / R2_VAL);
 
     //Vout divider 
     V_pin = ((float)adcResultRaw/ADC_MAX_COUNT)*VREF_VAL; 
@@ -522,6 +569,9 @@ __interrupt void adcA1ISR(void)
     Vout = ((float)adcResultRaw / ADC_MAX_COUNT) * VREF_VAL * ((R1_VAL + R2_VAL) / R2_VAL);
 
     // //
+    // TODO 
+    IL   = ((float)adcResultRaw2 / ADC_MAX_COUNT) * VREF_VAL; 
+
     // // Set the bufferFull flag if the buffer is full
     // //
     // if(RESULTS_BUFFER_SIZE <= index)
