@@ -1,3 +1,4 @@
+
 //#############################################################################
 //
 // FILE:   adc_ex1_soc_epwm.c
@@ -102,7 +103,7 @@ volatile uint16_t adcResultRaw = 0;
 // --- Hardware Constants (Adjust to your actual divider) ---
 #define R1_VAL            150000.0f  // Example: 10k Ohm
 #define R2_VAL            100000.0f   // Example: 2k Ohm
-#define VREF_VAL          3.0f      // F28P55x standard VREF is often 3.0V
+#define VREF_VAL          3.3f      // F28P55x standard VREF is often 3.0V
 #define ADC_MAX_COUNT     4095.0f   // 12-bit resolution
 
 
@@ -490,7 +491,7 @@ void initADCSOC(void)
                                            // 8:A8   9:A9   A:A10  B:A11
                                            // C:A12  D:A13  E:A14  F:A15
     AdcaRegs.ADCSOC0CTL.bit.ACQPS = 9;     // Sample window is 10 SYSCLK cycles
-    AdcaRegs.ADCSOC0CTL.bit.TRIGSEL = 5;   // Trigger on ePWM1 SOCA
+    AdcaRegs.ADCSOC0CTL.bit.TRIGSEL = 0x11;   // Trigger on ePWM1 SOCA
 
     AdcaRegs.ADCINTSEL1N2.bit.INT1SEL = 0; // End of SOC0 will set INT1 flag
     AdcaRegs.ADCINTSEL1N2.bit.INT1E = 1;   // Enable INT1 flag
@@ -519,7 +520,7 @@ __interrupt void adcA1ISR(void)
     //Vout divider 
     V_pin = ((float)adcResultRaw/ADC_MAX_COUNT)*VREF_VAL; 
     //Vout (Power supply)
-    Vout = ((float)adcResultRaw / ADC_MAX_COUNT) * VREF_VAL * ((R1_VAL + R2_VAL) / R2_VAL);
+    Vout = ((float)adcResultRaw / ADC_MAX_COUNT) * VREF_VAL * ((R1_VAL + R2_VAL) / R1_VAL);
 
     // //
     // // Set the bufferFull flag if the buffer is full
